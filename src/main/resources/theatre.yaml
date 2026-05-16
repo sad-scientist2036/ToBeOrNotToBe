@@ -1,0 +1,268 @@
+openapi: 3.0.3
+info:
+  version: "1"
+  title: Бронирование мест на спектакль
+  description: Система бронирования мест в театре
+servers:
+  - url: http://localhost:8080/api
+    description: Local server
+components:
+  schemas:
+    Seat:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID места
+          example: 1
+        row:
+          type: integer
+          description: Ряд
+          minimum: 1
+          example: 5
+        number:
+          type: integer
+          description: Номер места в ряду
+          minimum: 1
+          example: 12
+        status:
+          type: string
+          enum:
+            - free
+            - booked
+          description: Статус места
+          example: free
+    HallSchema:
+      type: object
+      properties:
+        rows:
+          type: integer
+          description: Количество рядов
+          example: 10
+        seatsPerRow:
+          type: integer
+          description: Количество мест в ряду
+          example: 20
+        seats:
+          type: array
+          description: Список всех мест
+          items:
+            $ref: "#/components/schemas/Seat"
+    BookRequest:
+      type: object
+      required:
+        - seatId
+        - customerName
+        - customerPhone
+      properties:
+        seatId:
+          type: integer
+          description: ID места для бронирования
+          minimum: 1
+          example: 42
+        customerName:
+          type: string
+          description: Имя заказчика
+          minLength: 2
+          maxLength: 100
+          example: Иван Петров
+        customerPhone:
+          type: string
+          description: Телефон заказчика
+          example: "+79225457909"
+    BookResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Место успешно забронировано
+        ticketId:
+          type: integer
+          description: ID билета
+          example: 777
+        seat:
+          $ref: "#/components/schemas/Seat"
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Сообщение об ошибке
+          example: Место уже занято
+        code:
+          type: integer
+          description: Код ошибки
+          example: 409
+  parameters:
+    seatId:
+      in: path
+      name: seatId
+      description: ID места
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+paths:
+  /hall/schema:
+    get:
+      summary: Получить схему зала
+      description: Возвращает схему зала с актуальным состоянием мест (свободно/занято)
+      tags:
+        - Зал
+      operationId: getHallSchema
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HallSchema"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /seats:
+    get:
+      summary: Получить список всех мест
+      description: Возвращает список всех мест с их статусами
+      tags:
+        - Места
+      operationId: getAllSeats
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Seat"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+  /seats/free:
+    get:
+      summary: Получить список свободных мест
+      description: Возвращает список только свободных мест
+      tags:
+        - Места
+      operationId: getFreeSeats
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Seat"
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+  /seats/{seatId}/book:
+    post:
+      summary: Забронировать место
+      description: Бронирование конкретного места. Проверка доступности происходит на
+        сервере.
+      tags:
+        - Бронирование
+      operationId: bookSeat
+      parameters:
+        - $ref: "#/components/parameters/seatId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookRequest"
+      responses:
+        "201":
+          description: Бронирование успешно создано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BookResponse"
+        "400":
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Unauthorized
+        "409":
+          description: Conflict - Место уже занято
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /seats/{seatId}/release:
+    post:
+      summary: Освободить место
+      description: Отмена бронирования места
+      tags:
+        - Бронирование
+      operationId: releaseSeat
+      parameters:
+        - $ref: "#/components/parameters/seatId"
+      responses:
+        "200":
+          description: Место освобождено
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Бронирование отменено
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not Found - Бронирование не найдено
+        "500":
+          description: Internal Server Error
+  /stats:
+    get:
+      summary: Статистика занятости зала
+      description: "Возвращает статистику: всего мест, занято, свободно, процент занятости"
+      tags:
+        - Статистика
+      operationId: getStats
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalSeats:
+                    type: integer
+                    example: 200
+                  bookedSeats:
+                    type: integer
+                    example: 45
+                  freeSeats:
+                    type: integer
+                    example: 155
+                  occupancyPercentage:
+                    type: number
+                    format: float
+                    example: 22.5
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error

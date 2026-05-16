@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.theatre</groupId>
+    <groupId>mephi.theatre</groupId>
     <artifactId>theatre-booking</artifactId>
     <version>1.0-SNAPSHOT</version>
 
@@ -22,19 +22,15 @@
     </properties>
 
     <dependencies>
-        <!-- Spring Boot Starter Web -->
+        <!-- Spring Boot Starters -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
-
-        <!-- Spring Boot Starter Data JPA -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
-
-        <!-- Spring Boot Starter Security (для аутентификации) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
@@ -66,18 +62,21 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Swagger (OpenAPI) -->
+        <!-- Swagger -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>2.5.0</version>
         </dependency>
 
-        <!-- Lombok -->
+        <!-- Jackson для XML и YAML -->
         <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <optional>true</optional>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-xml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
         </dependency>
     </dependencies>
 

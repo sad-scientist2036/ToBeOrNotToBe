@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Театр - бронирование</title>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #1a1a2e; color: #fff; }
+        h1 { text-align: center; color: #e94560; }
+        .stats { text-align: center; margin: 20px; padding: 10px; background: #16213e; border-radius: 10px; }
+        .hall { max-width: 1200px; margin: 0 auto; }
+        .row { margin-bottom: 15px; display: flex; flex-wrap: wrap; }
+        .row-title { font-weight: bold; width: 60px; padding: 10px; color: #e94560; }
+        .seats-row { display: flex; flex-wrap: wrap; gap: 8px; }
+        .seat { width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        .free { background-color: #2ecc71; }
+        .free:hover { background-color: #27ae60; transform: scale(1.05); }
+        .booked { background-color: #e74c3c; cursor: not-allowed; opacity: 0.7; }
+        button { padding: 10px 20px; margin: 10px; background: #e94560; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #ff6b81; }
+        .message { text-align: center; margin: 20px; padding: 10px; border-radius: 5px; }
+        .success { background: rgba(46,204,113,0.2); border: 1px solid #2ecc71; color: #2ecc71; }
+        .error { background: rgba(231,76,60,0.2); border: 1px solid #e74c3c; color: #e74c3c; }
+    </style>
+</head>
+<body>
+<h1>Театр - схема зала</h1>
+
+<div style="text-align: center;">
+    <button id="statsBtn">Статистика</button>
+    <button id="refreshBtn">Обновить</button>
+</div>
+
+<div id="stats" class="stats"></div>
+<div id="hall" class="hall"></div>
+<div id="message" class="message"></div>
+
+<script>
+    let seats = [];
+
+    async function loadSeats() {
+        try {
+            const res = await fetch('/api/seats');
+            if (!res.ok) throw new Error('HTTP error');
+            seats = await res.json();
+            renderHall();
+            return true;
+        } catch (e) {
+            showMessage('Ошибка загрузки мест: ' + e.message, 'error');
+            return false;
+        }
+    }
+
+    function renderHall() {
+        const hallDiv = document.getElementById('hall');
+        hallDiv.innerHTML = '';
+
+        if (!seats.length) {
+            hallDiv.innerHTML = '<div style="text-align:center">Нет мест</div>';
+            return;
+        }
+
+        let currentRow = 0;
+        let rowDiv = null;
+        let seatsRow = null;
+
+        for (const seat of seats) {
+            if (seat.row !== currentRow) {
+                currentRow = seat.row;
+                rowDiv = document.createElement('div');
+                rowDiv.className = 'row';
+
+                const title = document.createElement('div');
+                title.className = 'row-title';
+                title.innerText = 'Ряд ' + currentRow;
+                rowDiv.appendChild(title);
+
+                seatsRow = document.createElement('div');
+                seatsRow.className = 'seats-row';
+                rowDiv.appendChild(seatsRow);
+
+                hallDiv.appendChild(rowDiv);
+            }
+
+            const seatDiv = document.createElement('div');
+            seatDiv.className = 'seat ' + (seat.status === 'FREE' ? 'free' : 'booked');
+            seatDiv.innerText = seat.number;
+
+            if (seat.status === 'FREE') {
+                seatDiv.onclick = (function(id) {
+                    return function() { bookSeat(id); };
+                })(seat.id);
+            }
+
+            seatsRow.appendChild(seatDiv);
+        }
+    }
+
+    async function bookSeat(seatId) {
+        const name = prompt('Ваше имя:');
+        if (!name) return;
+        const phone = prompt('Ваш телефон:');
+        if (!phone) return;
+
+        try {
+            const res = await fetch('/api/seats/' + seatId + '/book', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customerName: name, customerPhone: phone })
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                showMessage('Билет №' + data.ticketId + ' оформлен! Место забронировано.', 'success');
+                loadSeats();
+                loadStats();
+            } else {
+                showMessage('Ошибка: ' + (data.message || 'Место уже занято'), 'error');
+                loadSeats();
+            }
+        } catch (e) {
+            showMessage('Ошибка при бронировании', 'error');
+        }
+    }
+
+    async function loadStats() {
+        try {
+            const res = await fetch('/api/stats');
+            const stats = await res.json();
+            document.getElementById('stats').innerHTML =
+                'Всего: ' + stats.totalSeats + ' | ' +
+                'Занято: ' + stats.bookedSeats + ' | ' +
+                'Свободно: ' + stats.freeSeats + ' | ' +
+                'Занятость: ' + stats.occupancyPercentage + '%';
+        } catch (e) {
+            document.getElementById('stats').innerHTML = 'Ошибка загрузки статистики';
+        }
+    }
+
+    function showMessage(msg, type) {
+        const msgDiv = document.getElementById('message');
+        msgDiv.textContent = msg;
+        msgDiv.className = 'message ' + type;
+        setTimeout(() => {
+            msgDiv.textContent = '';
+            msgDiv.className = 'message';
+        }, 3000);
+    }
+
+    document.getElementById('statsBtn').onclick = loadStats;
+    document.getElementById('refreshBtn').onclick = function() { loadSeats(); loadStats(); };
+
+    loadSeats();
+    loadStats();
+</script>
+</body>
+</html>
