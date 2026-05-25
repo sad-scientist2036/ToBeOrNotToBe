@@ -21,16 +21,41 @@ public class BookingService {
         this.ticketRepository = ticketRepository;
     }
 
+    // Шаг 1: Временное резервирование (когда пользователь начал бронировать)
     @Transactional
-    public Ticket bookSeat(BookRequest request) {
-        Seat seat = seatRepository.findByIdWithLock(request.getSeatId())
+    public Seat holdSeat(Long seatId) {
+        Seat seat = seatRepository.findByIdWithLock(seatId)
                 .orElseThrow(() -> new RuntimeException("Место не найдено"));
 
         if (seat.getStatus() != SeatStatus.FREE) {
-            throw new RuntimeException("Место уже занято");
+            throw new RuntimeException("Место уже не доступно");
+        }
+
+        seat.setStatus(SeatStatus.HOLD);
+        seat.setHoldExpiresAt(LocalDateTime.now().plusMinutes(5)); // блокировка на 5 минут
+        return seatRepository.save(seat);
+    }
+
+    // Шаг 2: Подтверждение бронирования (после ввода данных)
+    @Transactional
+    public Ticket confirmBooking(BookRequest request) {
+        Seat seat = seatRepository.findByIdWithLock(request.getSeatId())
+                .orElseThrow(() -> new RuntimeException("Место не найдено"));
+
+        // Проверяем, что место в статусе HOLD и не истекло время
+        if (seat.getStatus() != SeatStatus.HOLD) {
+            throw new RuntimeException("Место не забронировано. Возможно, время вышло.");
+        }
+
+        if (seat.getHoldExpiresAt().isBefore(LocalDateTime.now())) {
+            seat.setStatus(SeatStatus.FREE);
+            seat.setHoldExpiresAt(null);
+            seatRepository.save(seat);
+            throw new RuntimeException("Время бронирования истекло");
         }
 
         seat.setStatus(SeatStatus.BOOKED);
+        seat.setHoldExpiresAt(null);
         seatRepository.save(seat);
 
         Ticket ticket = new Ticket();
@@ -42,6 +67,19 @@ public class BookingService {
         return ticketRepository.save(ticket);
     }
 
+    // Отмена временного резервирования
+    @Transactional
+    public void cancelHold(Long seatId) {
+        Seat seat = seatRepository.findByIdWithLock(seatId)
+                .orElseThrow(() -> new RuntimeException("Место не найдено"));
+
+        if (seat.getStatus() == SeatStatus.HOLD) {
+            seat.setStatus(SeatStatus.FREE);
+            seat.setHoldExpiresAt(null);
+            seatRepository.save(seat);
+        }
+    }
+
     @Transactional
     public void releaseSeat(Long seatId) {
         Ticket ticket = ticketRepository.findBySeatId(seatId)
@@ -49,6 +87,7 @@ public class BookingService {
 
         Seat seat = ticket.getSeat();
         seat.setStatus(SeatStatus.FREE);
+        seat.setHoldExpiresAt(null);
         seatRepository.save(seat);
 
         ticketRepository.delete(ticket);

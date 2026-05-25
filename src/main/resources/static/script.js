@@ -1,16 +1,14 @@
-const API_BASE = '/api';
-
 let seats = [];
+let updateInterval = null;
+let currentHoldSeatId = null;
 
 async function loadSeats() {
     try {
-        const response = await fetch(`${API_BASE}/seats`);
-        if (!response.ok) throw new Error('Ошибка загрузки');
-        seats = await response.json();
+        const res = await fetch('/api/seats');
+        seats = await res.json();
         renderHall();
     } catch (error) {
-        showMessage('Ошибка загрузки схемы зала', 'error');
-        console.error(error);
+        console.error('Ошибка загрузки:', error);
     }
 }
 
@@ -18,8 +16,8 @@ function renderHall() {
     const hallDiv = document.getElementById('hall');
     hallDiv.innerHTML = '';
 
-    if (!seats || seats.length === 0) {
-        hallDiv.innerHTML = '<div class="loading">Загрузка...</div>';
+    if (!seats.length) {
+        hallDiv.innerHTML = '<div class="loading">Нет мест</div>';
         return;
     }
 
@@ -27,17 +25,16 @@ function renderHall() {
     let rowDiv = null;
     let seatsRow = null;
 
-    seats.forEach(seat => {
+    for (const seat of seats) {
         if (seat.row !== currentRow) {
-            // Создаем новый ряд
             currentRow = seat.row;
             rowDiv = document.createElement('div');
             rowDiv.className = 'row';
 
-            const titleDiv = document.createElement('div');
-            titleDiv.className = 'row-title';
-            titleDiv.textContent = `Ряд ${currentRow}`;
-            rowDiv.appendChild(titleDiv);
+            const title = document.createElement('div');
+            title.className = 'row-title';
+            title.innerText = 'Ряд ' + currentRow;
+            rowDiv.appendChild(title);
 
             seatsRow = document.createElement('div');
             seatsRow.className = 'seats-row';
@@ -47,112 +44,104 @@ function renderHall() {
         }
 
         const seatDiv = document.createElement('div');
-        seatDiv.className = `seat ${seat.status.toLowerCase()}`;
-        seatDiv.textContent = seat.number;
+
+        let statusClass = '';
+        if (seat.status === 'FREE') statusClass = 'free';
+        else if (seat.status === 'HOLD') statusClass = 'hold';
+        else statusClass = 'booked';
+
+        seatDiv.className = 'seat ' + statusClass;
+        seatDiv.innerText = seat.number;
 
         if (seat.status === 'FREE') {
-            seatDiv.onclick = () => bookSeat(seat.id);
+            seatDiv.onclick = (function(id) {
+                return function() { startBooking(id); };
+            })(seat.id);
+        } else if (seat.status === 'HOLD') {
+            seatDiv.style.cursor = 'wait';
+            seatDiv.title = 'Временно забронировано другим пользователем';
+        } else {
+            seatDiv.style.cursor = 'not-allowed';
+            seatDiv.title = 'Уже занято';
         }
 
         seatsRow.appendChild(seatDiv);
-    });
+    }
 }
 
-async function bookSeat(seatId) {
-    const seat = seats.find(s => s.id === seatId);
-    if (!seat || seat.status !== 'FREE') {
-        showMessage('Это место уже занято', 'error');
-        return;
-    }
-
-    const name = prompt('Введите ваше имя');
-    if (!name || name.trim() === '') {
-        showMessage('Имя обязательно для бронирования', 'error');
-        return;
-    }
-
-    const phone = prompt('Введите ваш телефон');
-    if (!phone || phone.trim() === '') {
-        showMessage('Телефон обязателен для бронирования', 'error');
-        return;
-    }
-
+async function startBooking(seatId) {
     try {
-        const response = await fetch(`${API_BASE}/seats/${seatId}/book`, {
+        // Шаг 1: Временное резервирование
+        const holdRes = await fetch('/api/seats/' + seatId + '/hold', { method: 'POST' });
+        const holdData = await holdRes.json();
+
+        if (!holdRes.ok) {
+            showMessage(holdData.message || 'Место уже занято', 'error');
+            loadSeats();
+            return;
+        }
+
+        showMessage(holdData.message, 'info');
+        currentHoldSeatId = seatId;
+
+        // Шаг 2: Запрос данных пользователя
+        const name = prompt('Ваше имя:');
+        if (!name) {
+            cancelHold(seatId);
+            return;
+        }
+
+        const phone = prompt('Ваш телефон:');
+        if (!phone) {
+            cancelHold(seatId);
+            return;
+        }
+
+        // Шаг 3: Подтверждение бронирования
+        const confirmRes = await fetch('/api/seats/' + seatId + '/confirm', {
             method: 'POST',
-            headers: {
-                'Content-Type': application/json'
-            },
-            body: JSON.stringify({
-                customerName: name.trim(),
-                customerPhone: phone.trim()
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customerName: name, customerPhone: phone })
         });
 
-        const data = await response.json();
+        const confirmData = await confirmRes.json();
 
-        if (response.ok) {
-            showMessage(`✅ Билет №${data.ticketId} успешно оформлен!`, 'success');
-            loadSeats(); // Обновляем схему
-            loadStats();  // Обновляем статистику
+        if (confirmRes.ok) {
+            showMessage('✅ ' + confirmData.message + ' Билет №' + confirmData.ticketId, 'success');
+            currentHoldSeatId = null;
+            loadSeats();
+            loadStats();
         } else {
-            showMessage(`❌ ${data.message || 'Место уже занято'}`, 'error');
-            loadSeats(); // Обновляем схему, чтобы показать актуальное состояние
+            showMessage('❌ ' + confirmData.message, 'error');
+            loadSeats();
         }
-    } catch (error) {
-        showMessage('Ошибка при бронировании', 'error');
-        console.error(error);
+
+    } catch (e) {
+        showMessage('Ошибка соединения', 'error');
     }
 }
 
-async function loadStats() {
+async function cancelHold(seatId) {
     try {
-        const response = await fetch(`${API_BASE}/stats`);
-        if (!response.ok) throw new Error('Ошибка загрузки статистики');
-        const stats = await response.json();
-
-        const statsDiv = document.getElementById('stats');
-        statsDiv.innerHTML = `
-            <strong>📊 Статистика зала</strong><br>
-            Всего мест: ${stats.totalSeats}<br>
-            Занято мест: ${stats.bookedSeats}<br>
-            Свободно мест: ${stats.freeSeats}<br>
-            Занятость: ${stats.occupancyPercentage}%
-        `;
-    } catch (error) {
-        console.error('Ошибка загрузки статистики:', error);
+        await fetch('/api/seats/' + seatId + '/cancel-hold', { method: 'POST' });
+        showMessage('Бронирование отменено', 'info');
+        loadSeats();
+    } catch (e) {
+        console.error('Ошибка отмены:', e);
     }
 }
 
-function showMessage(text, type) {
-    const messageDiv = document.getElementById('message');
-    messageDiv.textContent = text;
-    messageDiv.className = `message ${type}`;
-    setTimeout(() => {
-        messageDiv.textContent = '';
-        messageDiv.className = 'message';
+// Автообновление каждые 3 секунды
+function startAutoRefresh() {
+    if (updateInterval) clearInterval(updateInterval);
+    updateInterval = setInterval(() => {
+        loadSeats();
+        loadStats();
     }, 3000);
 }
 
-// Загрузка статистики каждые 5 секунд (автообновление)
-let statsInterval;
+// ... остальные функции (loadStats, showMessage, обработчики кнопок)
 
-function startStatsAutoRefresh() {
-    if (statsInterval) clearInterval(statsInterval);
-    statsInterval = setInterval(() => {
-        loadStats();
-    }, 5000);
-}
-
-// Обработчики кнопок
-document.getElementById('statsBtn').addEventListener('click', loadStats);
-document.getElementById('refreshBtn').addEventListener('click', () => {
-    loadSeats();
-    loadStats();
-    showMessage('Схема обновлена', 'success');
-});
-
-// Инициализация
+startAutoRefresh();
 loadSeats();
 loadStats();
-startStatsAutoRefresh();

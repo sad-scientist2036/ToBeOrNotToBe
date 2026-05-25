@@ -1,7 +1,9 @@
 package mephi.theatre.entity;
 
-import mephi.theatre.enums.SeatStatus;
 import jakarta.persistence.*;
+import mephi.theatre.enums.SeatStatus;
+
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "seats")
@@ -20,6 +22,14 @@ public class Seat {
     @Enumerated(EnumType.STRING)
     private SeatStatus status;
 
+    @Column(name = "hold_expires_at")
+    private LocalDateTime holdExpiresAt;
+
+    public Seat() {
+        this.status = SeatStatus.FREE;
+    }
+
+    // Геттеры и сеттеры
     public Long getId() {
         return id;
     }
@@ -50,5 +60,13 @@ public class Seat {
 
     public void setStatus(SeatStatus status) {
         this.status = status;
+    }
+
+    public LocalDateTime getHoldExpiresAt() {
+        return holdExpiresAt;
+    }
+
+    public void setHoldExpiresAt(LocalDateTime holdExpiresAt) {
+        this.holdExpiresAt = holdExpiresAt;
     }
 }
