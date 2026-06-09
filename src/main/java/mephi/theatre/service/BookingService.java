@@ -3,25 +3,30 @@ package mephi.theatre.service;
 import mephi.theatre.dto.BookRequest;
 import mephi.theatre.entity.Seat;
 import mephi.theatre.entity.Ticket;
+import mephi.theatre.entity.User;
 import mephi.theatre.enums.SeatStatus;
 import mephi.theatre.repository.SeatRepository;
 import mephi.theatre.repository.TicketRepository;
+import mephi.theatre.repository.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class BookingService {
 
     private final SeatRepository seatRepository;
     private final TicketRepository ticketRepository;
+    private final UserRepository userRepository;
 
-    public BookingService(SeatRepository seatRepository, TicketRepository ticketRepository) {
+    public BookingService(SeatRepository seatRepository, TicketRepository ticketRepository, UserRepository userRepository) {
         this.seatRepository = seatRepository;
         this.ticketRepository = ticketRepository;
+        this.userRepository = userRepository;
     }
 
-    // Шаг 1: Временное резервирование (когда пользователь начал бронировать)
     @Transactional
     public Seat holdSeat(Long seatId) {
         Seat seat = seatRepository.findByIdWithLock(seatId)
@@ -32,17 +37,32 @@ public class BookingService {
         }
 
         seat.setStatus(SeatStatus.HOLD);
-        seat.setHoldExpiresAt(LocalDateTime.now().plusMinutes(5)); // блокировка на 5 минут
+        seat.setHoldExpiresAt(LocalDateTime.now().plusMinutes(5));
         return seatRepository.save(seat);
     }
 
-    // Шаг 2: Подтверждение бронирования (после ввода данных)
     @Transactional
-    public Ticket confirmBooking(BookRequest request) {
+    public Ticket confirmBooking(BookRequest request, String userEmail) {
+        // Валидация имени
+        if (request.getCustomerName() == null || request.getCustomerName().trim().isEmpty()) {
+            throw new RuntimeException("Имя обязательно для заполнения");
+        }
+
+        // Валидация телефона
+        String phone = request.getCustomerPhone();
+        if (phone == null || phone.trim().isEmpty()) {
+            throw new RuntimeException("Телефон обязателен для заполнения");
+        }
+
+        String cleanPhone = phone.replaceAll("[^0-9]", "");
+        if (cleanPhone.length() < 10) {
+            throw new RuntimeException("Номер телефона должен содержать минимум 10 цифр");
+        }
+        request.setCustomerPhone(cleanPhone);
+
         Seat seat = seatRepository.findByIdWithLock(request.getSeatId())
                 .orElseThrow(() -> new RuntimeException("Место не найдено"));
 
-        // Проверяем, что место в статусе HOLD и не истекло время
         if (seat.getStatus() != SeatStatus.HOLD) {
             throw new RuntimeException("Место не забронировано. Возможно, время вышло.");
         }
@@ -60,14 +80,27 @@ public class BookingService {
 
         Ticket ticket = new Ticket();
         ticket.setSeat(seat);
-        ticket.setCustomerName(request.getCustomerName());
+        ticket.setCustomerName(request.getCustomerName().trim());
         ticket.setCustomerPhone(request.getCustomerPhone());
         ticket.setBookedAt(LocalDateTime.now());
 
-        return ticketRepository.save(ticket);
+        // Привязываем билет к пользователю
+        if (userEmail != null) {
+            User user = userRepository.findByEmail(userEmail).orElse(null);
+            if (user != null) {
+                ticket.setUser(user);
+            }
+        }
+
+        try {
+            return ticketRepository.save(ticket);
+        } catch (DataIntegrityViolationException e) {
+            seat.setStatus(SeatStatus.FREE);
+            seatRepository.save(seat);
+            throw new RuntimeException("Место уже занято");
+        }
     }
 
-    // Отмена временного резервирования
     @Transactional
     public void cancelHold(Long seatId) {
         Seat seat = seatRepository.findByIdWithLock(seatId)
@@ -81,9 +114,14 @@ public class BookingService {
     }
 
     @Transactional
-    public void releaseSeat(Long seatId) {
+    public void releaseSeat(Long seatId, String userEmail) {
         Ticket ticket = ticketRepository.findBySeatId(seatId)
                 .orElseThrow(() -> new RuntimeException("Бронирование не найдено"));
+
+        // Проверяем, что билет принадлежит пользователю
+        if (userEmail != null && ticket.getUser() != null && !ticket.getUser().getEmail().equals(userEmail)) {
+            throw new RuntimeException("Вы не можете отменить чужое бронирование");
+        }
 
         Seat seat = ticket.getSeat();
         seat.setStatus(SeatStatus.FREE);
@@ -91,5 +129,13 @@ public class BookingService {
         seatRepository.save(seat);
 
         ticketRepository.delete(ticket);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Ticket> getMyBookings(String userEmail) {
+        if (userEmail == null) {
+            return List.of();
+        }
+        return ticketRepository.findByUserEmail(userEmail);
     }
 }

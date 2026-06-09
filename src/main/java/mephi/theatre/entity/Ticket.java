@@ -17,6 +17,10 @@ public class Ticket {
     @JoinColumn(name = "seat_id")
     private Seat seat;
 
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User user;
+
     private String customerName;
     private String customerPhone;
     private LocalDateTime bookedAt;
@@ -40,6 +44,14 @@ public class Ticket {
 
     public void setSeat(Seat seat) {
         this.seat = seat;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 
     public String getCustomerName() {
