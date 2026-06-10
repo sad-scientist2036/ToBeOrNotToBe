@@ -2,8 +2,10 @@ package mephi.theatre.service;
 
 import mephi.theatre.dto.SeatResponse;
 import mephi.theatre.entity.Seat;
+import mephi.theatre.enums.SeatStatus;
 import mephi.theatre.repository.SeatRepository;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
 import java.util.stream.Collectors;
 

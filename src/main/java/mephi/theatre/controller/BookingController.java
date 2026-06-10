@@ -7,10 +7,14 @@ import mephi.theatre.entity.Seat;
 import mephi.theatre.entity.Ticket;
 import mephi.theatre.service.BookingService;
 import mephi.theatre.service.SeatService;
+import mephi.theatre.service.SseEmitters;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.IOException;
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,15 +27,34 @@ public class BookingController {
 
     private final SeatService seatService;
     private final BookingService bookingService;
+    private final SseEmitters sseEmitters;
 
-    public BookingController(SeatService seatService, BookingService bookingService) {
+    public BookingController(SeatService seatService,
+                             BookingService bookingService,
+                             SseEmitters sseEmitters) {
         this.seatService = seatService;
         this.bookingService = bookingService;
+        this.sseEmitters = sseEmitters;
     }
 
     @GetMapping("/seats")
     public List<SeatResponse> getAllSeats() {
         return seatService.getAllSeats();
+    }
+
+    @GetMapping(value = "/seats/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamSeats() {
+        SseEmitter emitter = sseEmitters.addEmitter();
+
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("seats-update")
+                    .data(seatService.getAllSeats()));
+        } catch (IOException e) {
+            emitter.complete();
+        }
+
+        return emitter;
     }
 
     @PostMapping("/seats/{seatId}/hold")

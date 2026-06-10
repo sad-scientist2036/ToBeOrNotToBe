@@ -20,11 +20,19 @@ public class BookingService {
     private final SeatRepository seatRepository;
     private final TicketRepository ticketRepository;
     private final UserRepository userRepository;
+    private final SseEmitters sseEmitters;
+    private final SeatService seatService;
 
-    public BookingService(SeatRepository seatRepository, TicketRepository ticketRepository, UserRepository userRepository) {
+    public BookingService(SeatRepository seatRepository,
+                          TicketRepository ticketRepository,
+                          UserRepository userRepository,
+                          SseEmitters sseEmitters,
+                          SeatService seatService) {
         this.seatRepository = seatRepository;
         this.ticketRepository = ticketRepository;
         this.userRepository = userRepository;
+        this.sseEmitters = sseEmitters;
+        this.seatService = seatService;
     }
 
     @Transactional
@@ -43,12 +51,10 @@ public class BookingService {
 
     @Transactional
     public Ticket confirmBooking(BookRequest request, String userEmail) {
-        // Валидация имени
         if (request.getCustomerName() == null || request.getCustomerName().trim().isEmpty()) {
             throw new RuntimeException("Имя обязательно для заполнения");
         }
 
-        // Валидация телефона
         String phone = request.getCustomerPhone();
         if (phone == null || phone.trim().isEmpty()) {
             throw new RuntimeException("Телефон обязателен для заполнения");
@@ -84,7 +90,6 @@ public class BookingService {
         ticket.setCustomerPhone(request.getCustomerPhone());
         ticket.setBookedAt(LocalDateTime.now());
 
-        // Привязываем билет к пользователю
         if (userEmail != null) {
             User user = userRepository.findByEmail(userEmail).orElse(null);
             if (user != null) {
@@ -93,7 +98,9 @@ public class BookingService {
         }
 
         try {
-            return ticketRepository.save(ticket);
+            Ticket saved = ticketRepository.save(ticket);
+            sseEmitters.sendSeatsUpdate(seatService.getAllSeats());
+            return saved;
         } catch (DataIntegrityViolationException e) {
             seat.setStatus(SeatStatus.FREE);
             seatRepository.save(seat);
@@ -118,7 +125,6 @@ public class BookingService {
         Ticket ticket = ticketRepository.findBySeatId(seatId)
                 .orElseThrow(() -> new RuntimeException("Бронирование не найдено"));
 
-        // Проверяем, что билет принадлежит пользователю
         if (userEmail != null && ticket.getUser() != null && !ticket.getUser().getEmail().equals(userEmail)) {
             throw new RuntimeException("Вы не можете отменить чужое бронирование");
         }
@@ -129,6 +135,8 @@ public class BookingService {
         seatRepository.save(seat);
 
         ticketRepository.delete(ticket);
+
+        sseEmitters.sendSeatsUpdate(seatService.getAllSeats());
     }
 
     @Transactional(readOnly = true)
