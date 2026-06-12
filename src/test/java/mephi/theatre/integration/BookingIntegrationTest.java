@@ -67,7 +67,7 @@ class BookingIntegrationTest {
         mockMvc.perform(post("/api/seats/" + testSeatId + "/hold"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Место забронировано на 5 минут. Введите данные для подтверждения."));
+                .andExpect(jsonPath("$.message").value("Место забронировано. Введите данные для подтверждения."));
     }
 
     @Test

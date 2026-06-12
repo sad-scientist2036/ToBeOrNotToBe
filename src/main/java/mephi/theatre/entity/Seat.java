@@ -21,9 +21,6 @@ public class Seat {
     @Enumerated(EnumType.STRING)
     private SeatStatus status;
 
-    @Column(name = "hold_expires_at")
-    private LocalDateTime holdExpiresAt;
-
     @ManyToOne
     @JoinColumn(name = "hall_id")
     private Hall hall;
@@ -44,10 +41,6 @@ public class Seat {
 
     public SeatStatus getStatus() { return status; }
     public void setStatus(SeatStatus status) { this.status = status; }
-
-    public LocalDateTime getHoldExpiresAt() { return holdExpiresAt; }
-    public void setHoldExpiresAt(LocalDateTime holdExpiresAt) { this.holdExpiresAt = holdExpiresAt; }
-
     public Hall getHall() { return hall; }
     public void setHall(Hall hall) { this.hall = hall; }
 }

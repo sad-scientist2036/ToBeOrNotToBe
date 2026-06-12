@@ -11,7 +11,6 @@ public interface SeatRepository extends JpaRepository<Seat, Long> {
 
     List<Seat> findAllByOrderByRowNumAscSeatNumAsc();
 
-    // Явный SQL с FOR UPDATE
     @Query(value = "SELECT * FROM seats WHERE id = :id FOR UPDATE", nativeQuery = true)
     Optional<Seat> findByIdWithLock(@Param("id") Long id);
 }

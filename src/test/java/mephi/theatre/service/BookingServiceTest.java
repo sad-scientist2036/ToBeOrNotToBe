@@ -14,7 +14,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -67,8 +66,8 @@ class BookingServiceTest {
         Seat result = bookingService.holdSeat(1L);
 
         assertEquals(SeatStatus.HOLD, result.getStatus());
-        assertNotNull(result.getHoldExpiresAt());
         verify(seatRepository).save(seat);
+        verify(sseEmitters).sendSeatsUpdate(any());
     }
 
     @Test
@@ -87,7 +86,6 @@ class BookingServiceTest {
     @Test
     void confirmBooking_ShouldCreateTicket() {
         seat.setStatus(SeatStatus.HOLD);
-        seat.setHoldExpiresAt(LocalDateTime.now().plusMinutes(5));
 
         when(seatRepository.findByIdWithLock(1L)).thenReturn(Optional.of(seat));
         when(seatRepository.save(any(Seat.class))).thenReturn(seat);

@@ -11,6 +11,7 @@ import mephi.theatre.repository.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -45,8 +46,11 @@ public class BookingService {
         }
 
         seat.setStatus(SeatStatus.HOLD);
-        seat.setHoldExpiresAt(LocalDateTime.now().plusMinutes(5));
-        return seatRepository.save(seat);
+        Seat saved = seatRepository.save(seat);
+
+        sseEmitters.sendSeatsUpdate(seatService.getAllSeats());
+
+        return saved;
     }
 
     @Transactional
@@ -70,18 +74,10 @@ public class BookingService {
                 .orElseThrow(() -> new RuntimeException("Место не найдено"));
 
         if (seat.getStatus() != SeatStatus.HOLD) {
-            throw new RuntimeException("Место не забронировано. Возможно, время вышло.");
-        }
-
-        if (seat.getHoldExpiresAt().isBefore(LocalDateTime.now())) {
-            seat.setStatus(SeatStatus.FREE);
-            seat.setHoldExpiresAt(null);
-            seatRepository.save(seat);
-            throw new RuntimeException("Время бронирования истекло");
+            throw new RuntimeException("Место не забронировано. Обновите страницу и попробуйте снова.");
         }
 
         seat.setStatus(SeatStatus.BOOKED);
-        seat.setHoldExpiresAt(null);
         seatRepository.save(seat);
 
         Ticket ticket = new Ticket();
@@ -115,8 +111,8 @@ public class BookingService {
 
         if (seat.getStatus() == SeatStatus.HOLD) {
             seat.setStatus(SeatStatus.FREE);
-            seat.setHoldExpiresAt(null);
             seatRepository.save(seat);
+            sseEmitters.sendSeatsUpdate(seatService.getAllSeats());
         }
     }
 
@@ -131,7 +127,6 @@ public class BookingService {
 
         Seat seat = ticket.getSeat();
         seat.setStatus(SeatStatus.FREE);
-        seat.setHoldExpiresAt(null);
         seatRepository.save(seat);
 
         ticketRepository.delete(ticket);

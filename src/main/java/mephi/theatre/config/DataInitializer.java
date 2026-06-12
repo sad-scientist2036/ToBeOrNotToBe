@@ -21,17 +21,20 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (hallRepository.count() == 0) {
-            System.out.println("Создание зала...");
+        // Проверяем, есть ли места
+        if (seatRepository.count() == 0) {
+            System.out.println("Создание зала и мест...");
 
-            // Создаем зал
-            Hall hall = new Hall();
-            hall.setName("Главный зал");
-            hall.setRows(10);
-            hall.setSeatsPerRow(20);
-            hall = hallRepository.save(hall);
+            // Находим или создаём зал
+            Hall hall = hallRepository.findById(1L).orElseGet(() -> {
+                Hall newHall = new Hall();
+                newHall.setName("Главный зал");
+                newHall.setRows(10);
+                newHall.setSeatsPerRow(20);
+                return hallRepository.save(newHall);
+            });
 
-            // Создаем места
+            // Создаём 200 мест
             for (int row = 1; row <= hall.getRows(); row++) {
                 for (int seatNum = 1; seatNum <= hall.getSeatsPerRow(); seatNum++) {
                     Seat seat = new Seat();
@@ -43,11 +46,9 @@ public class DataInitializer implements CommandLineRunner {
                 }
             }
 
-            System.out.println(" Зал создан: " + hall.getName() +
-                    " (" + hall.getRows() + " рядов × " + hall.getSeatsPerRow() + " мест)");
-            System.out.println(" Всего создано мест: " + seatRepository.count());
+            System.out.println(" Создано мест: " + seatRepository.count());
         } else {
-            System.out.println("Зал уже существует. Количество мест: " + seatRepository.count());
+            System.out.println("Места уже есть. Количество мест: " + seatRepository.count());
         }
     }
 }

@@ -1,5 +1,10 @@
 package mephi.theatre.controller;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import mephi.theatre.dto.BookRequest;
 import mephi.theatre.dto.SeatResponse;
 import mephi.theatre.dto.StatsResponse;
@@ -23,6 +28,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
+@Tag(name = "Бронирование мест", description = "API для управления бронированием мест в театре")
 public class BookingController {
 
     private final SeatService seatService;
@@ -38,11 +44,13 @@ public class BookingController {
     }
 
     @GetMapping("/seats")
+    @Operation(summary = "Получить схему зала")
     public List<SeatResponse> getAllSeats() {
         return seatService.getAllSeats();
     }
 
     @GetMapping(value = "/seats/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "SSE стрим обновлений")
     public SseEmitter streamSeats() {
         SseEmitter emitter = sseEmitters.addEmitter();
 
@@ -58,14 +66,15 @@ public class BookingController {
     }
 
     @PostMapping("/seats/{seatId}/hold")
-    public ResponseEntity<Map<String, Object>> holdSeat(@PathVariable Long seatId) {
+    @Operation(summary = "Временно забронировать место")
+    public ResponseEntity<Map<String, Object>> holdSeat(
+            @Parameter(description = "ID места") @PathVariable Long seatId) {
         Map<String, Object> response = new HashMap<>();
 
         try {
             Seat seat = bookingService.holdSeat(seatId);
             response.put("success", true);
-            response.put("message", "Место забронировано на 5 минут. Введите данные для подтверждения.");
-            response.put("expiresAt", seat.getHoldExpiresAt());
+            response.put("message", "Место забронировано. Введите данные для подтверждения.");
             return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
             response.put("success", false);
@@ -75,8 +84,9 @@ public class BookingController {
     }
 
     @PostMapping("/seats/{seatId}/confirm")
+    @Operation(summary = "Подтвердить бронирование")
     public ResponseEntity<Map<String, Object>> confirmBooking(
-            @PathVariable Long seatId,
+            @Parameter(description = "ID места") @PathVariable Long seatId,
             @RequestBody BookRequest request,
             Principal principal) {
 
@@ -99,7 +109,9 @@ public class BookingController {
     }
 
     @PostMapping("/seats/{seatId}/cancel-hold")
-    public ResponseEntity<Map<String, Object>> cancelHold(@PathVariable Long seatId) {
+    @Operation(summary = "Отменить временное бронирование")
+    public ResponseEntity<Map<String, Object>> cancelHold(
+            @Parameter(description = "ID места") @PathVariable Long seatId) {
         Map<String, Object> response = new HashMap<>();
 
         try {
@@ -115,7 +127,10 @@ public class BookingController {
     }
 
     @PostMapping("/seats/{seatId}/release")
-    public ResponseEntity<Map<String, Object>> releaseSeat(@PathVariable Long seatId, Principal principal) {
+    @Operation(summary = "Освободить место (отмена билета)")
+    public ResponseEntity<Map<String, Object>> releaseSeat(
+            @Parameter(description = "ID места") @PathVariable Long seatId,
+            Principal principal) {
         Map<String, Object> response = new HashMap<>();
 
         try {
@@ -132,6 +147,7 @@ public class BookingController {
     }
 
     @GetMapping("/stats")
+    @Operation(summary = "Получить статистику зала")
     public StatsResponse getStats() {
         List<SeatResponse> seats = seatService.getAllSeats();
         long total = seats.size();
@@ -146,6 +162,7 @@ public class BookingController {
     }
 
     @GetMapping("/my/bookings")
+    @Operation(summary = "Мои билеты")
     public ResponseEntity<List<Map<String, Object>>> getMyBookings(Principal principal) {
         List<Map<String, Object>> bookings = new ArrayList<>();
 
