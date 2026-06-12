@@ -1,8 +1,23 @@
 let seats = [];
 let eventSource = null;
-let holdTimer = null;
-let holdTimeout = null;
-let currentHoldSeatId = null;
+let pendingSeatId = null;
+let refreshInterval = null;
+
+async function refreshSeats() {
+    try {
+        const response = await fetch('/api/seats');
+        if (!response.ok) throw new Error('Ошибка загрузки');
+        const newSeats = await response.json();
+
+        if (JSON.stringify(seats) !== JSON.stringify(newSeats)) {
+            seats = newSeats;
+            renderHall();
+            console.log('Схема обновлена, мест: ' + seats.length);
+        }
+    } catch (error) {
+        console.error('Ошибка обновления схемы:', error);
+    }
+}
 
 function renderHall() {
     const hallDiv = document.getElementById('hall');
@@ -49,35 +64,26 @@ function renderHall() {
                 return function() { startBooking(id); };
             })(seat.id);
         } else if (seat.status === 'HOLD') {
-            seatDiv.title = 'Временно забронировано';
+            if (pendingSeatId === seat.id) {
+                seatDiv.title = 'Продолжить бронирование';
+                seatDiv.onclick = (function(id) {
+                    return function() { continueBooking(id); };
+                })(seat.id);
+            } else {
+                seatDiv.title = 'Временно забронировано другим пользователем';
+                seatDiv.onclick = null;
+            }
         } else {
             seatDiv.title = 'Уже занято';
+            seatDiv.onclick = null;
         }
 
         seatsRow.appendChild(seatDiv);
     }
 }
 
-function startSSE() {
-    if (eventSource) {
-        eventSource.close();
-    }
-
-    eventSource = new EventSource('/api/seats/stream');
-
-    eventSource.addEventListener('seats-update', function(event) {
-        seats = JSON.parse(event.data);
-        renderHall();
-    });
-
-    eventSource.onerror = function() {
-        console.error('SSE ошибка, переподключение через 5 секунд...');
-        setTimeout(startSSE, 5000);
-    };
-}
-
 async function startBooking(seatId) {
-    currentHoldSeatId = seatId;
+    pendingSeatId = seatId;
 
     try {
         showMessage('Бронирование места...', 'info');
@@ -91,35 +97,50 @@ async function startBooking(seatId) {
 
         if (!holdResponse.ok) {
             showMessage(holdData.message || 'Не удалось забронировать место', 'error');
+            pendingSeatId = null;
+            await refreshSeats();
             return;
         }
 
-        startHoldTimer(5);
+        await refreshSeats();
+        await showBookingDialog(seatId);
 
-        const name = prompt('Введите ваше имя:');
-        if (!name || name.trim() === '') {
-            cancelHold(seatId);
-            stopHoldTimer();
-            return;
-        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showMessage('Ошибка соединения с сервером', 'error');
+        pendingSeatId = null;
+        await refreshSeats();
+    }
+}
 
-        const phone = prompt('Введите ваш телефон (только цифры, минимум 10):');
-        if (!phone || phone.trim() === '') {
-            cancelHold(seatId);
-            stopHoldTimer();
-            return;
-        }
+async function continueBooking(seatId) {
+    showMessage('Продолжение бронирования...', 'info');
+    await showBookingDialog(seatId);
+}
 
-        const cleanPhone = phone.replace(/[^0-9]/g, '');
-        if (cleanPhone.length < 10) {
-            showMessage('Введите корректный номер телефона (минимум 10 цифр)', 'error');
-            cancelHold(seatId);
-            stopHoldTimer();
-            return;
-        }
+async function showBookingDialog(seatId) {
+    const name = prompt('Введите ваше имя:');
+    if (!name || name.trim() === '') {
+        await cancelHold(seatId);
+        return;
+    }
 
-        showMessage('Подтверждение бронирования...', 'info');
+    const phone = prompt('Введите ваш телефон (только цифры, минимум 10):');
+    if (!phone || phone.trim() === '') {
+        await cancelHold(seatId);
+        return;
+    }
 
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    if (cleanPhone.length < 10) {
+        showMessage('Введите корректный номер телефона (минимум 10 цифр)', 'error');
+        await cancelHold(seatId);
+        return;
+    }
+
+    showMessage('Подтверждение бронирования...', 'info');
+
+    try {
         const confirmResponse = await fetch('/api/seats/' + seatId + '/confirm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -129,52 +150,21 @@ async function startBooking(seatId) {
             })
         });
 
-        stopHoldTimer();
-
         const confirmData = await confirmResponse.json();
 
         if (confirmResponse.ok) {
             showMessage('Билет №' + confirmData.ticketId + ' успешно оформлен!', 'success');
+            pendingSeatId = null;
+            await refreshSeats();
+            await loadMyBookings();
         } else {
             showMessage(confirmData.message || 'Ошибка при подтверждении', 'error');
+            await cancelHold(seatId);
         }
-
     } catch (error) {
-        stopHoldTimer();
         console.error('Ошибка:', error);
         showMessage('Ошибка соединения с сервером', 'error');
-    } finally {
-        currentHoldSeatId = null;
-    }
-}
-
-function startHoldTimer(minutes) {
-    let timeLeft = minutes * 60;
-
-    holdTimer = setInterval(() => {
-        const mins = Math.floor(timeLeft / 60);
-        const secs = timeLeft % 60;
-        showMessage(`Время на бронирование: ${mins}:${secs.toString().padStart(2, '0')}`, 'info');
-        timeLeft--;
-    }, 1000);
-
-    holdTimeout = setTimeout(() => {
-        stopHoldTimer();
-        showMessage('Время на бронирование истекло', 'error');
-        if (currentHoldSeatId) {
-            cancelHold(currentHoldSeatId);
-        }
-    }, minutes * 60 * 1000);
-}
-
-function stopHoldTimer() {
-    if (holdTimer) {
-        clearInterval(holdTimer);
-        holdTimer = null;
-    }
-    if (holdTimeout) {
-        clearTimeout(holdTimeout);
-        holdTimeout = null;
+        await cancelHold(seatId);
     }
 }
 
@@ -182,9 +172,29 @@ async function cancelHold(seatId) {
     try {
         await fetch('/api/seats/' + seatId + '/cancel-hold', { method: 'POST' });
         showMessage('Бронирование отменено', 'info');
+        pendingSeatId = null;
+        await refreshSeats();
     } catch (error) {
         console.error('Ошибка отмены:', error);
     }
+}
+
+function startSSE() {
+    if (eventSource) {
+        eventSource.close();
+    }
+
+    eventSource = new EventSource('/api/seats/stream');
+
+    eventSource.addEventListener('seats-update', function(event) {
+        console.log('SSE обновление получено');
+        seats = JSON.parse(event.data);
+        renderHall();
+    });
+
+    eventSource.onerror = function() {
+        console.error('SSE ошибка');
+    };
 }
 
 async function loadStats() {
@@ -235,7 +245,8 @@ async function cancelBooking(seatId) {
         const response = await fetch('/api/seats/' + seatId + '/release', { method: 'POST' });
         if (response.ok) {
             showMessage('Бронирование отменено, место освобождено', 'success');
-            loadMyBookings();
+            await refreshSeats();
+            await loadMyBookings();
         } else {
             showMessage('Ошибка отмены бронирования', 'error');
         }
@@ -255,11 +266,11 @@ function showMessage(msg, type) {
 }
 
 document.getElementById('statsBtn').onclick = loadStats;
-document.getElementById('refreshBtn').onclick = () => {
-    showMessage('Схема обновлена', 'info');
-};
+document.getElementById('refreshBtn').onclick = refreshSeats;
 document.getElementById('myBookingsBtn').onclick = loadMyBookings;
 
 startSSE();
+refreshSeats();
+refreshInterval = setInterval(refreshSeats, 3000);
 loadStats();
 loadMyBookings();

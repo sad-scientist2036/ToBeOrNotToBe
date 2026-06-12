@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Театр - бронирование мест</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Театр - схема зала</h1>
+
+    <div class="user-info">
+        <span th:text="${#authentication.name}"></span>
+        <button onclick="location.href='/auth/logout'">Выйти</button>
+    </div>
+
+    <div class="stats-panel">
+        <button id="statsBtn">Статистика</button>
+        <button id="refreshBtn">Обновить схему</button>
+        <button id="myBookingsBtn">Мои бронирования</button>
+    </div>
+
+    <div id="stats" class="stats-info"></div>
+    <div id="hall" class="hall"></div>
+    <div id="message" class="message"></div>
+
+    <div id="myBookingsCard" class="card" style="display: none;">
+        <h2>Мои бронирования</h2>
+        <div id="myBookingsList"></div>
+    </div>
+</div>
+
+<script src="/js/booking.js"></script>
+</body>
+</html>
