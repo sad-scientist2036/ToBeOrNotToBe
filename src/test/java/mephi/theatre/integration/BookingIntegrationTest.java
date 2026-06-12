@@ -5,47 +5,46 @@ import mephi.theatre.entity.Seat;
 import mephi.theatre.enums.SeatStatus;
 import mephi.theatre.repository.SeatRepository;
 import mephi.theatre.repository.TicketRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.http.*;
+import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
+import org.springframework.test.web.servlet.MockMvc;
 
-import java.util.Map;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-@Testcontainers
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest
+@AutoConfigureMockMvc
 class BookingIntegrationTest {
 
-    @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
-            .withDatabaseName("testdb")
-            .withUsername("test")
-            .withPassword("test");
-
-    @DynamicPropertySource
-    static void properties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", postgres::getJdbcUrl);
-        registry.add("spring.datasource.username", postgres::getUsername);
-        registry.add("spring.datasource.password", postgres::getPassword);
-    }
+    @Autowired
+    private MockMvc mockMvc;
 
     @Autowired
-    private TestRestTemplate restTemplate;
+    private ObjectMapper objectMapper;
 
     @Autowired
     private SeatRepository seatRepository;
 
     @Autowired
     private TicketRepository ticketRepository;
+
+    @DynamicPropertySource
+    static void properties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", () -> "jdbc:h2:mem:testdb;MODE=PostgreSQL");
+        registry.add("spring.datasource.driver-class-name", () -> "org.h2.Driver");
+        registry.add("spring.datasource.username", () -> "sa");
+        registry.add("spring.datasource.password", () -> "");
+        registry.add("spring.jpa.database-platform", () -> "org.hibernate.dialect.H2Dialect");
+        registry.add("spring.jpa.hibernate.ddl-auto", () -> "create-drop");
+    }
 
     private Long testSeatId;
 
@@ -63,55 +62,38 @@ class BookingIntegrationTest {
     }
 
     @Test
-    void holdSeat_ShouldReturnSuccess() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        ResponseEntity<Map> response = restTemplate.postForEntity(
-                "/api/seats/" + testSeatId + "/hold",
-                null,
-                Map.class
-        );
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertTrue((Boolean) response.getBody().get("success"));
-        assertEquals("Место забронировано на 5 минут. Введите данные для подтверждения.",
-                response.getBody().get("message"));
+    @WithMockUser(roles = "USER")
+    void holdSeat_ShouldReturnSuccess() throws Exception {
+        mockMvc.perform(post("/api/seats/" + testSeatId + "/hold"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.message").value("Место забронировано на 5 минут. Введите данные для подтверждения."));
     }
 
     @Test
-    void confirmBooking_ShouldCreateTicket() {
+    @WithMockUser(roles = "USER")
+    void confirmBooking_ShouldCreateTicket() throws Exception {
         // Сначала Hold
-        restTemplate.postForEntity("/api/seats/" + testSeatId + "/hold", null, Map.class);
+        mockMvc.perform(post("/api/seats/" + testSeatId + "/hold"));
 
         // Затем Confirm
         BookRequest request = new BookRequest();
         request.setCustomerName("Тест Тестов");
         request.setCustomerPhone("89220000000");
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        ResponseEntity<Map> response = restTemplate.postForEntity(
-                "/api/seats/" + testSeatId + "/confirm",
-                new HttpEntity<>(request, headers),
-                Map.class
-        );
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertTrue((Boolean) response.getBody().get("success"));
-        assertNotNull(response.getBody().get("ticketId"));
+        mockMvc.perform(post("/api/seats/" + testSeatId + "/confirm")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.ticketId").exists());
     }
 
     @Test
-    void getSeats_ShouldReturnSeatsList() {
-        ResponseEntity<Seat[]> response = restTemplate.getForEntity(
-                "/api/seats",
-                Seat[].class
-        );
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertTrue(response.getBody().length > 0);
+    @WithMockUser(roles = "USER")
+    void getSeats_ShouldReturnSeatsList() throws Exception {
+        mockMvc.perform(get("/api/seats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
     }
 }

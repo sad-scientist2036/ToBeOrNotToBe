@@ -2,7 +2,6 @@ package mephi.theatre.entity;
 
 import jakarta.persistence.*;
 import mephi.theatre.enums.SeatStatus;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -25,48 +24,30 @@ public class Seat {
     @Column(name = "hold_expires_at")
     private LocalDateTime holdExpiresAt;
 
+    @ManyToOne
+    @JoinColumn(name = "hall_id")
+    private Hall hall;
+
     public Seat() {
         this.status = SeatStatus.FREE;
     }
 
     // Геттеры и сеттеры
-    public Long getId() {
-        return id;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    public int getRowNum() { return rowNum; }
+    public void setRowNum(int rowNum) { this.rowNum = rowNum; }
 
-    public int getRowNum() {
-        return rowNum;
-    }
+    public int getSeatNum() { return seatNum; }
+    public void setSeatNum(int seatNum) { this.seatNum = seatNum; }
 
-    public void setRowNum(int rowNum) {
-        this.rowNum = rowNum;
-    }
+    public SeatStatus getStatus() { return status; }
+    public void setStatus(SeatStatus status) { this.status = status; }
 
-    public int getSeatNum() {
-        return seatNum;
-    }
+    public LocalDateTime getHoldExpiresAt() { return holdExpiresAt; }
+    public void setHoldExpiresAt(LocalDateTime holdExpiresAt) { this.holdExpiresAt = holdExpiresAt; }
 
-    public void setSeatNum(int seatNum) {
-        this.seatNum = seatNum;
-    }
-
-    public SeatStatus getStatus() {
-        return status;
-    }
-
-    public void setStatus(SeatStatus status) {
-        this.status = status;
-    }
-
-    public LocalDateTime getHoldExpiresAt() {
-        return holdExpiresAt;
-    }
-
-    public void setHoldExpiresAt(LocalDateTime holdExpiresAt) {
-        this.holdExpiresAt = holdExpiresAt;
-    }
+    public Hall getHall() { return hall; }
+    public void setHall(Hall hall) { this.hall = hall; }
 }
